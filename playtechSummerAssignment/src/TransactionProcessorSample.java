@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 
 
 // This template shows input parameters format.
@@ -13,30 +14,62 @@ public class TransactionProcessorSample {
     public static void main(final String[] args) throws IOException {
 
         System.out.println("Received arguments:");
+
+
         for (String arg : args) {
             System.out.println(arg);
+
+            String filePath = arg; // Replace with your actual file path
+
+            Path path = Paths.get(filePath);
+            if (Files.exists(path)) {
+                System.out.println("The file " + filePath + " exists.");
+            } else {
+                System.out.println("The file " + filePath + " does not exist.");
+            }
+
+
         }
+
+
+
+
+
         //System.out.println("-------");
         //System.out.println(Paths.get(args[0]).getFileName());
         List<User> users = TransactionProcessorSample.readUsers(Paths.get(args[0]));
         List<Transaction> transactions = TransactionProcessorSample.readTransactions(Paths.get(args[1]));
         List<BinMapping> binMappings = TransactionProcessorSample.readBinMappings(Paths.get(args[2]));
 
+        long startTime = System.nanoTime();
+
         List<Event> events = TransactionProcessorSample.processTransactions(users, transactions, binMappings);
-        /*System.out.println(events.size());
+
+        long endTime = System.nanoTime();
+        long executionTime = (endTime - startTime) / 1000000;
+
+        System.out.println("Function execution time: " + executionTime + "ms");
+
         System.out.println("----------------------------------------------------------------------------------------------------------------");
-        for (int i = 0; i < events.size(); i++) {
-            System.out.println(events.get(i).toString());
-        }*/
+
+
         TransactionProcessorSample.writeBalances(Paths.get(args[3]), users);
         TransactionProcessorSample.writeEvents(Paths.get(args[4]), events);
-        /*
+/*
+for (int i = 0; i < events.size(); i++) {
+            System.out.println(events.get(i).toString());
+        }
+
         for (User t : users){
             System.out.println(t.toString());
         }
+        int g = 1;
         for (Transaction t : transactions){
             System.out.println(t.toString());
+            System.out.println(g);
+            g+=1;
         }
+
         for (BinMapping t : binMappings){
             System.out.println(t.toString());
 
@@ -44,25 +77,20 @@ public class TransactionProcessorSample {
     }
 
     private static List<User> readUsers(final Path filePath) throws IOException {
+
         List<User> users = new ArrayList<>();
-        try (BufferedReader br = Files.newBufferedReader(filePath.getFileName())) {
+        try (BufferedReader br = Files.newBufferedReader(filePath)) {
+            //System.out.println(filePath.getFileName());
             br.readLine();
             String line;
             while ((line = br.readLine()) != null ) {
                 //System.out.println(line);
                 String[] fields = line.split(",");
-                User user = new User();
-                user.userId = fields[0];
-                user.username = fields[1];
-                user.balance = Double.parseDouble(fields[2]);
-                user.country = fields[3];
-                user.frozen = fields[4].equals("1");
-                user.depositMin = Double.parseDouble(fields[5]);
-                user.depositMax = Double.parseDouble(fields[6]);
-                user.withdrawMin = Double.parseDouble(fields[7]);
-                user.withdrawMax = Double.parseDouble(fields[8]);
+                User user = new User(fields[0],fields[1],Double.parseDouble(fields[2]),fields[3],fields[4].equals("1"),Double.parseDouble(fields[5]),
+                        Double.parseDouble(fields[6]),Double.parseDouble(fields[7]),Double.parseDouble(fields[8]) );
 
                 users.add(user);
+
             }
         }
         return users;
@@ -72,19 +100,15 @@ public class TransactionProcessorSample {
     private static List<Transaction> readTransactions(final Path filePath) throws  IOException {
         List<Transaction> trans = new ArrayList<>();
 
-        try (BufferedReader br = Files.newBufferedReader(filePath.getFileName())) {
+        try (BufferedReader br = Files.newBufferedReader(filePath)) {
             br.readLine();
             String line;
             while ((line = br.readLine()) != null ) {
                 //System.out.println(line);
                 String[] fields = line.split(",");
-                Transaction tran = new Transaction();
-                tran.transactionId = fields[0];
-                tran.userId = fields[1];
-                tran.type = fields[2];
-                tran.amount = Double.parseDouble(fields[3]);
-                tran.method = fields[4];
-                tran.accountNumber = fields[5];
+                Transaction tran = new Transaction(fields[0],fields[1],fields[2],Double.parseDouble(fields[3]),
+                        fields[4],fields[5]);
+
                 trans.add(tran);
             }
         }
@@ -96,18 +120,14 @@ public class TransactionProcessorSample {
     private static List<BinMapping> readBinMappings(final Path filePath) throws IOException {
         List<BinMapping> bins = new ArrayList<>();
 
-        try (BufferedReader br = Files.newBufferedReader(filePath.getFileName())) {
+        try (BufferedReader br = Files.newBufferedReader(filePath)) {
             br.readLine();
             String line;
             while ((line = br.readLine()) != null ) {
                 //System.out.println(line);
                 String[] fields = line.split(",");
-                BinMapping bi = new BinMapping();
-                bi.bankName = fields[0];
-                bi.rangeFrom = Long.parseLong(fields[1]);
-                bi.rangeTo = Long.parseLong(fields[2]);
-                bi.cardType = fields[3];
-                bi.country = fields[4];
+                BinMapping bi = new BinMapping(fields[0],Long.parseLong(fields[1]),Long.parseLong(fields[2]),
+                        fields[3],fields[4] );
 
                 bins.add(bi);
             }
@@ -117,248 +137,192 @@ public class TransactionProcessorSample {
         return bins;
     }
 
-    private static List<Event> processTransactions(final List<User> users, final List<Transaction> transactions, final List<BinMapping> binMappings) {
+    public static List<Event> processTransactions(final List<User> users, final List<Transaction> transactions, final List<BinMapping> binMappings) {
         List<Event> events = new ArrayList<>();
         Set<String> seenTransactionIds = new HashSet<>();
         Map<String, String> accountUsageMap = new HashMap<>();
+        List<Transaction> transactionsApproved = new ArrayList<>();
 
-        List<Transaction> transactions_approved = new ArrayList<>();
+
+        Map<String, User> userMap = users.stream().collect(Collectors.toMap(User::getUserId, user -> user));
+
+
+        TreeMap<Long, BinMapping> binMap = new TreeMap<>();
+        for (BinMapping bin : binMappings) {
+            binMap.put(bin.getRangeFrom(), bin);
+        }
+
+        Map<String, Set<String>> successfulDeposits = new HashMap<>();
+
         try {
-            for (int i = 0; i < transactions.size(); i++) {
-                Event even = new Event();
+            for (Transaction transaction : transactions) {
+                Event event = new Event(null, null, null);
+                String transactionId = transaction.getTransactionId();
 
-
-                Transaction transaction_Now = transactions.get(i);
-                String t = transaction_Now.transactionId;
-
-                User user_Now = new User();
-                for (int j = 0; j < users.size(); j++) {
-                    if (Objects.equals(users.get(j).userId, transaction_Now.userId))
-                        user_Now = users.get(j);
-                    //System.out.println(users.get(j));
+                //check if user exists
+                User user = userMap.get(transaction.getUserId());
+                if (user == null) {
+                    event.setStatus(Event.STATUS_DECLINED);
+                    event.setTransactionId(transactionId);
+                    event.setMessage("User id not found among user data");
+                    events.add(event);
+                    continue;
                 }
-                //System.out.println(user_Now.toString());
 
-                //number of same transactions with same transactionID
-                if (!seenTransactionIds.add(transaction_Now.transactionId)) {
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "Transaction ID is not unique.";
-                    events.add(even);
+                //chekćk if unique
+                if (!seenTransactionIds.add(transactionId)) {
+                    event.setTransactionId(transactionId);
+                    event.setStatus(Event.STATUS_DECLINED);
+                    event.setMessage("Transaction ID is not unique.");
+                    events.add(event);
+                    continue;
+                }
+
+                //check if frozen
+                if (user.isFrozen()) {
+                    event.setStatus(Event.STATUS_DECLINED);
+                    event.setTransactionId(transactionId);
+                    event.setMessage("User " + user.getUsername() + " account is FROZEN.");
+                    events.add(event);
                     continue;
                 }
 
 
-
-
-                //- Verify that the user exists and is not frozen (users are loaded from a file, see "inputs").
-                if (user_Now.userId == null || user_Now.frozen) {
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = t;
-                    if (user_Now.userId != null)
-                        even.message = "User " + user_Now.username + " uses account for " + transaction_Now.type + ". " + transaction_Now.type + " gets declined due to Account being FROZEN.";
-                    else
-                        even.message = "User " + user_Now.username + " uses account for " + transaction_Now.type + ". " + transaction_Now.type + " gets declined because account doesnt exist.";
-                    events.add(even);
+                if (transaction.getMethod().equals("TRANSFER")) {
+                    if (!IbanValidator.validateIban(transaction.getAccountNumber())) {
+                        event.setStatus(Event.STATUS_DECLINED);
+                        event.setTransactionId(transactionId);
+                        event.setMessage("Invalid IBAN.");
+                        events.add(event);
+                        continue;
+                    }
+                    if (!transaction.getAccountNumber().substring(0, 2).equals(user.getCountry())) {
+                        event.setStatus(Event.STATUS_DECLINED);
+                        event.setTransactionId(transactionId);
+                        event.setMessage("Account country and user country don't match.");
+                        events.add(event);
+                        continue;
+                    }
+                } else if (transaction.getMethod().equals("CARD")) {
+                    long cardPrefix = Long.parseLong(transaction.getAccountNumber().substring(0, 10));
+                    Map.Entry<Long, BinMapping> binEntry = binMap.floorEntry(cardPrefix);
+                    if (binEntry == null || cardPrefix > binEntry.getValue().getRangeTo()) {
+                        continue;
+                    }
+                    BinMapping bin = binEntry.getValue();
+                    if (!bin.getCardType().equals("DC")) {
+                        event.setStatus(Event.STATUS_DECLINED);
+                        event.setTransactionId(transactionId);
+                        event.setMessage("Card is not a debit card.");
+                        events.add(event);
+                        continue;
+                    }
+                    if (!bin.getCountry().equals(IbanValidator.convertToAlpha3(user.getCountry()))) {
+                        event.setStatus(Event.STATUS_DECLINED);
+                        event.setTransactionId(transactionId);
+                        event.setMessage("Card country does not match user country.");
+                        events.add(event);
+                        continue;
+                    }
+                } else {
+                    event.setStatus(Event.STATUS_DECLINED);
+                    event.setTransactionId(transactionId);
+                    event.setMessage("Invalid payment method.");
+                    events.add(event);
                     continue;
                 }
 
-                //- Validate payment method:
-                //  - For **TRANSFER** payment methods, validate the transfer account number's check digit validity (see details here [International Bank Account Number](https://en.wikipedia.org/wiki/International_Bank_Account_Number))
-                //  - For **CARD** payment methods, only allow debit cards; validate that card type=DC (see bin mapping part of "inputs" section for details)
-                //  - Other types must be declined
-                //- Confirm that the country of the card or account used for the transaction matches the user's country
-
-
-                if (Objects.equals(transaction_Now.method, "TRANSFER")) {
-                    if (!IbanValidator.validateIban(transaction_Now.accountNumber)) {
-                        even.status = Event.STATUS_DECLINED;
-                        even.transactionId = transaction_Now.transactionId;
-                        even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - IBAN wrong";
-                        events.add(even);
+                // Validate amount and limits
+                if (transaction.getAmount() <= 0) {
+                    event.setStatus(Event.STATUS_DECLINED);
+                    event.setTransactionId(transactionId);
+                    event.setMessage("Transaction amount is not valid.");
+                    events.add(event);
+                    continue;
+                }
+                if (transaction.getType().equals("WITHDRAW")) {
+                    if (user.getWithdrawMin() >= transaction.getAmount() || user.getWithdrawMax() < transaction.getAmount() || user.getBalance() < transaction.getAmount()) {
+                        event.setStatus(Event.STATUS_DECLINED);
+                        event.setTransactionId(transactionId);
+                        event.setMessage("Withdrawal amount is not valid.");
+                        events.add(event);
                         continue;
                     }
 
-                    if (!transaction_Now.accountNumber.substring(0, 2).equals(user_Now.country )) {
-                        //System.out.println(IbanValidator.convertToAlpha3(user_Now.country));
-                        even.status = Event.STATUS_DECLINED;
-                        even.transactionId = transaction_Now.transactionId;
-                        even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - account country and user county dont match";
-                        events.add(even);
+                    // Check if the withdrawal account has had a successful deposit
+                    Set<String> userDepositedAccounts = successfulDeposits.get(user.getUserId());
+                    if (userDepositedAccounts == null || !userDepositedAccounts.contains(transaction.getAccountNumber())) {
+                        event.setStatus(Event.STATUS_DECLINED);
+                        event.setTransactionId(transactionId);
+                        event.setMessage("Withdrawal not allowed: account has not had a successful deposit.");
+                        events.add(event);
                         continue;
                     }
-                }
-                if (Objects.equals(transaction_Now.method, "CARD")) {
-                    String card_number = transaction_Now.accountNumber;
-                    long ten_numbers = Long.parseLong(card_number.substring(0, 10));
-                    boolean isValidCard = false;
-                    for (BinMapping bin : binMappings) {
-                        if (bin.rangeFrom <= ten_numbers && ten_numbers <= bin.rangeTo) {
-                            if (!bin.cardType.equals("DC")) {
-                                even.status = Event.STATUS_DECLINED;
-                                even.transactionId = transaction_Now.transactionId;
-                                even.message = "Card is not a debit card.";
-                                events.add(even);
-                                break;
-                            }
-                            if (!bin.country.equals(IbanValidator.convertToAlpha3(user_Now.country))) {
-                                even.status = Event.STATUS_DECLINED;
-                                even.transactionId = transaction_Now.transactionId;
-                                even.message = "User"+ transaction_Now.userId +" country:"+ user_Now.country +" card country:"+ bin.country  +" Card country does not match user country.";
-                                events.add(even);
-                                break;
-                            }
-                            isValidCard = true;
-                        }
-                    }
-                    if (!isValidCard) continue;
-
-
-
-
-                }
-
-                //- Validate that the amount is a valid (positive) number and within deposit/withdraw limits.
-                if (transaction_Now.amount <= 0) {
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - transaction amount is lower than 0.";
-                    events.add(even);
-                    continue;
-                }
-
-                if (transaction_Now.type.equals("WITHDRAW") && (user_Now.withdrawMin >= transaction_Now.amount || user_Now.withdrawMax < transaction_Now.amount)) {
-                    //System.out.println(user_Now.toString() + "     "+ transaction_Now.amount + (user_Now.withdrawMin >= transaction_Now.amount || user_Now.withdrawMax < transaction_Now.amount));
-                    //System.out.println(user_Now.withdrawMax < transaction_Now.amount);
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - withdrawal amount is lower or higher than allowed";
-                    events.add(even);
-                    continue;
-                }
-
-                if (transaction_Now.type.equals("DEPOSIT") && (user_Now.depositMin > transaction_Now.amount || user_Now.depositMax < transaction_Now.amount)) {
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - deposit amount is lower or higher than allowed";
-                    events.add(even);
-                    continue;
-                }
-
-                //- For withdrawals, validate that the user has a sufficient balance for a withdrawal.
-                if (transaction_Now.type.equals("WITHDRAW") && user_Now.balance < transaction_Now.amount) {
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - withdrawal amount is  higher than Account bakance";
-                    events.add(even);
-                    continue;
-                }
-                //- Allow withdrawals only with the same payment account that has previously been successfully used for deposit (declined deposits with an account do not make it eligible for withdrawals; at least one approved deposit is needed).
-
-                if (transaction_Now.type.equals("WITHDRAW")) {
-                    String user_id_temp = transaction_Now.userId;
-
-                    boolean has_deposited_before = false;
-
-
-
-                    for (int k = 0; k < transactions_approved.size(); k++) {
-                        if (Objects.equals(transactions_approved.get(k).accountNumber,transaction_Now.accountNumber ) && transactions_approved.get(k).type.equals("DEPOSIT")) {
-                            has_deposited_before = true;
-                            //System.out.println(transactions_approved.get(k).transactionId + "   " + transactions_approved.get(k).type);
-
-                        }
-
-                    }
-                    //System.out.println(has_deposited_before);
-                    if (!has_deposited_before) {
-
-
-                        even.status = Event.STATUS_DECLINED;
-                        even.transactionId = transaction_Now.transactionId;
-                        even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - cant withdraw, beacuse account has now deposited before";
-                        events.add(even);
+                } else if (transaction.getType().equals("DEPOSIT")) {
+                    if (user.getDepositMin() > transaction.getAmount() || user.getDepositMax() < transaction.getAmount()) {
+                        event.setStatus(Event.STATUS_DECLINED);
+                        event.setTransactionId(transactionId);
+                        event.setMessage("Deposit amount is not valid.");
+                        events.add(event);
                         continue;
                     }
-
-                }
-
-                //- Transaction type that isn't deposit or withdrawal should be declined
-                if (!(transaction_Now.type.equals("WITHDRAW") || transaction_Now.type.equals("DEPOSIT"))) {
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "User " + user_Now.username +" uses account "+ transaction_Now.accountNumber +". "+ transaction_Now.type  + " GETS DECLINED - error, Transaction type  isn't deposit or withdrawal -  should be declined";
-                    events.add(even);
+                    // Track successful deposit
+                    successfulDeposits
+                            .computeIfAbsent(user.getUserId(), k -> new HashSet<>())
+                            .add(transaction.getAccountNumber());
+                } else {
+                    event.setStatus(Event.STATUS_DECLINED);
+                    event.setTransactionId(transactionId);
+                    event.setMessage("Transaction type is not valid.");
+                    events.add(event);
                     continue;
                 }
 
-
-
-
-                if (accountUsageMap.containsKey(transaction_Now.accountNumber) && !accountUsageMap.get(transaction_Now.accountNumber).equals(user_Now.userId)) {
-                    even.status = Event.STATUS_DECLINED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "Account has already been used by another user.";
-                    events.add(even);
+                // Validate account usage
+                if (accountUsageMap.containsKey(transaction.getAccountNumber()) && !accountUsageMap.get(transaction.getAccountNumber()).equals(user.getUserId())) {
+                    event.setStatus(Event.STATUS_DECLINED);
+                    event.setTransactionId(transactionId);
+                    event.setMessage("Account has already been used by another user.");
+                    events.add(event);
                     continue;
                 }
 
-
-
-
-
-                if (transaction_Now.type.equals("WITHDRAW")){
-
-
-                    int user_index =  users.indexOf(user_Now);
-                    user_Now.balance = user_Now.balance - transaction_Now.amount;
-
-                    users.set(user_index,user_Now);
-
-                    even.status = Event.STATUS_APPROVED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "User " + user_Now.username +" uses"+ transaction_Now.method  + " for WHIDRAWL. Gets APPROVED";
-                    events.add(even);
-                    transactions_approved.add(transaction_Now);
-                    accountUsageMap.put(transaction_Now.accountNumber, user_Now.userId);
-                    seenTransactionIds.add(transaction_Now.transactionId);
-
+                // Update user balance and approve the transaction
+                if (transaction.getType().equals("WITHDRAW")) {
+                    user.setBalance(user.getBalance() - transaction.getAmount());
+                } else {
+                    user.setBalance(user.getBalance() + transaction.getAmount());
                 }
-                if (transaction_Now.type.equals("DEPOSIT")){
+                event.setStatus(Event.STATUS_APPROVED);
+                event.setTransactionId(transactionId);
+                event.setMessage("OK");
+                events.add(event);
+
+                transactionsApproved.add(transaction);
+                accountUsageMap.put(transaction.getAccountNumber(), user.getUserId());
+            }
+        } catch (Exception ignored) {
+            ;
+        }
+
+        return events;
+    }
 
 
-                    int user_index =  users.indexOf(user_Now);
-                    user_Now.balance = user_Now.balance + transaction_Now.amount;
 
-                    users.set(user_index,user_Now);
+    private static boolean isHasDepositedBefore(List<Transaction> transactions_approved, Transaction transaction_Now) {
+        boolean has_deposited_before = false;
 
-                    even.status = Event.STATUS_APPROVED;
-                    even.transactionId = transaction_Now.transactionId;
-                    even.message = "User " + user_Now.username +" uses"+ transaction_Now.method  + " for DEPOSIT. Gets APPROVED" ;
-                    events.add(even);
-                    transactions_approved.add(transaction_Now);
-                    accountUsageMap.put(transaction_Now.accountNumber, user_Now.userId);
-                    seenTransactionIds.add(transaction_Now.transactionId);
 
-                }
-
+        for (int k = 0; k < transactions_approved.size(); k++) {
+            if (Objects.equals(transactions_approved.get(k).getAccountNumber(), transaction_Now.getAccountNumber()) && transactions_approved.get(k).getType().equals("DEPOSIT")) {
+                has_deposited_before = true;
+                //System.out.println(transactions_approved.get(k).transactionId + "   " + transactions_approved.get(k).type);
 
             }
 
-        }catch (Exception ignored){ }
-
-
-        /*
-        The processing should include the following steps:
-- Users cannot share iban/card; payment account used by one user can no longer be used by another (Example Scenario for this validation provided below).
-- In case of unexpected errors with processing transactions, skip the transaction. Do not interrupt processing of the remaining transactions
-
-Transactions that fail any of the validations should be declined (i.e., the user's balance remains unchanged), and the decline reason should be saved in the events file.
-
-         */
-
-
-        return events;
+        }
+        return has_deposited_before;
     }
 
     private static void writeBalances(final Path filePath, final List<User> users) {
@@ -367,7 +331,7 @@ Transactions that fail any of the validations should be declined (i.e., the user
             FileWriter fileWriter = new FileWriter(String.valueOf(filePath));
             fileWriter.append("user_id").append(",").append("balance").append("\n");
             for (User user: users){
-                fileWriter.append(user.userId).append(",").append(String.format("%.2f", user.balance)).append("\n");
+                fileWriter.append(user.getUserId()).append(",").append(String.format("%.2f", user.getBalance())).append("\n");
             }
             fileWriter.close();
         } catch (IOException e) {
@@ -381,97 +345,17 @@ Transactions that fail any of the validations should be declined (i.e., the user
         try (final FileWriter writer = new FileWriter(filePath.toFile(), false)) {
             writer.append("transaction_id,status,message\n");
             for (final var event : events) {
-                writer.append(event.transactionId).append(",").append(event.status).append(",").append(event.message).append("\n");
+                writer.append(event.getTransactionId()).append(",").append(event.getStatus()).append(",").append(event.getMessage()).append("\n");
             }
         }
     }
 }
 
 
-class User {
-    String userId;
-    String username;
-    double balance;
-    String country;
-    boolean frozen;
-    double depositMin;
-    double depositMax;
-    double withdrawMin;
-    double withdrawMax;
 
-    @Override
-    public String toString() {
-        return "User{" +
-                "userId='" + userId + '\'' +
-                ", username='" + username + '\'' +
-                ", balance=" + balance +
-                ", country='" + country + '\'' +
-                ", frozen=" + frozen +
-                ", depositMin=" + depositMin +
-                ", depositMax=" + depositMax +
-                ", withdrawMin=" + withdrawMin +
-                ", withdrawMax=" + withdrawMax +
-                '}';
-    }
-}
 
-class Transaction {
-    String transactionId;
-    String userId;
-    String type;
-    double amount;
-    String method;
-    String accountNumber;
 
-    @Override
-    public String toString() {
-        return "Transaction{" +
-                "transactionId='" + transactionId + '\'' +
-                ", userId='" + userId + '\'' +
-                ", type='" + type + '\'' +
-                ", amount=" + amount +
-                ", method='" + method + '\'' +
-                ", accountNumber='" + accountNumber + '\'' +
-                '}';
-    }
-}
 
-class BinMapping {
-    String bankName;
-    long rangeFrom;
-    long rangeTo;
-    String cardType;
-    String country;
-
-    @Override
-    public String toString() {
-        return "BinMapping{" +
-                "bankName='" + bankName + '\'' +
-                ", rangeFrom=" + rangeFrom +
-                ", rangeTo=" + rangeTo +
-                ", cardType='" + cardType + '\'' +
-                ", country='" + country + '\'' +
-                '}';
-    }
-}
-
-class Event {
-    public static final String STATUS_DECLINED = "DECLINED";
-    public static final String STATUS_APPROVED = "APPROVED";
-
-    public String transactionId;
-    public String status;
-    public String message;
-
-    @Override
-    public String toString() {
-        return "Event{" +
-                "transactionId='" + transactionId + '\'' +
-                ", status='" + status + '\'' +
-                ", message='" + message + '\'' +
-                '}';
-    }
-}
 
 class IbanValidator {
 
@@ -545,6 +429,25 @@ class IbanValidator {
         IBAN_LENGTH_MAP.put("AE", 23);
         IBAN_LENGTH_MAP.put("GB", 22);
         IBAN_LENGTH_MAP.put("VG", 24);
+        IBAN_LENGTH_MAP.put("AO", 25);
+        IBAN_LENGTH_MAP.put("BF", 27);
+        IBAN_LENGTH_MAP.put("BI", 16);
+        IBAN_LENGTH_MAP.put("BJ", 28);
+        IBAN_LENGTH_MAP.put("CM", 27);
+        IBAN_LENGTH_MAP.put("CV", 25);
+        IBAN_LENGTH_MAP.put("DZ", 24);
+        IBAN_LENGTH_MAP.put("GA", 27);
+        IBAN_LENGTH_MAP.put("IR", 26);
+        IBAN_LENGTH_MAP.put("MG", 27);
+        IBAN_LENGTH_MAP.put("ML", 28);
+        IBAN_LENGTH_MAP.put("MZ", 25);
+        IBAN_LENGTH_MAP.put("SN", 28);
+        IBAN_LENGTH_MAP.put("TL", 23);
+        IBAN_LENGTH_MAP.put("UA", 29);
+        IBAN_LENGTH_MAP.put("VA", 22);
+        IBAN_LENGTH_MAP.put("SC", 31);
+        IBAN_LENGTH_MAP.put("ST", 25);
+
 
     }
 
