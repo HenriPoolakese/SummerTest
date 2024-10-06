@@ -432,6 +432,22 @@ class IbanValidator {
         IBAN_LENGTH_MAP.put("SC", 31);
         IBAN_LENGTH_MAP.put("ST", 25);
 
+        IBAN_LENGTH_MAP.put("GL", 18);
+        IBAN_LENGTH_MAP.put("CG", 27);
+        IBAN_LENGTH_MAP.put("GG", 22);
+        IBAN_LENGTH_MAP.put("FO", 18);
+        IBAN_LENGTH_MAP.put("PF", 27);
+        IBAN_LENGTH_MAP.put("GF", 27);
+        IBAN_LENGTH_MAP.put("MQ", 27);
+        IBAN_LENGTH_MAP.put("YT", 27);
+        IBAN_LENGTH_MAP.put("NC", 27);
+        IBAN_LENGTH_MAP.put("RE", 27);
+        IBAN_LENGTH_MAP.put("PM", 27);
+        IBAN_LENGTH_MAP.put("WF", 27);
+        IBAN_LENGTH_MAP.put("JE", 22);
+
+
+        IBAN_LENGTH_MAP.put("CI", 28); 
 
     }
 
